@@ -4,6 +4,26 @@ import os
 import asyncio
 from datetime import datetime, timedelta
 import json
+from threading import Thread
+
+# Add Flask for Render web service
+try:
+    from flask import Flask
+    app = Flask(__name__)
+    
+    @app.route('/')
+    def home():
+        return "Discord Bot is running!"
+    
+    @app.route('/health')
+    def health():
+        return "OK", 200
+    
+    def run_flask():
+        port = int(os.environ.get('PORT', 10000))
+        app.run(host='0.0.0.0', port=port)
+except ImportError:
+    print("Flask not installed")
 
 intents = discord.Intents.default()
 intents.presences = True
@@ -308,9 +328,17 @@ async def before_check_tracking():
     await bot.wait_until_ready()
 
 if __name__ == '__main__':
-       token = os.getenv('DISCORD_TOKEN')
-       if not token:
-           print("ERROR: DISCORD_TOKEN not found in environment variables!")
-           print("Please add your Discord bot token to the Secrets.")
-       else:
-           bot.run(token)
+    # Start Flask in background thread
+    try:
+        Thread(target=run_flask, daemon=True).start()
+        print("Flask server started on port", os.environ.get('PORT', 10000))
+    except Exception as e:
+        print(f"Could not start Flask server: {e}")
+    
+    # Start Discord bot
+    token = os.getenv('DISCORD_TOKEN')
+    if not token:
+        print("ERROR: DISCORD_TOKEN not found in environment variables!")
+        print("Please add your Discord bot token to the Secrets.")
+    else:
+        bot.run(token)
