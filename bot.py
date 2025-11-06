@@ -313,5 +313,5 @@ if __name__ == '__main__':
         print("ERROR: DISCORD_TOKEN not found in environment variables!")
         print("Please add your Discord bot token to the Secrets.")
     else:
-       import os
-   bot.run(os.environ['DISCORD_TOKEN'])
+        bot.run(token)
+
