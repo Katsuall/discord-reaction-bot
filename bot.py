@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import os
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from threading import Thread
 
@@ -66,24 +66,30 @@ async def on_ready():
     load_config()
     check_tracking.start()
 
+# ===============================
+#  ADMIN COMMANDS
+# ===============================
+
 @bot.command(name='track')
-async def track_reaction(ctx):
+@commands.has_permissions(administrator=True)
+async def track_activity(ctx):
+    """Start a 24-hour activity check"""
     if not ctx.guild:
         await ctx.send("This command can only be used in a server!")
         return
     
     embed = discord.Embed(
-        title="📋 Reaction Check",
+        title="📋 Activity Check",
         description="Please react with ✅ to confirm you've seen this message!\n\n**You have 24 hours to react.**",
         color=discord.Color.blue(),
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     embed.set_footer(text=f"Started by {ctx.author.name}")
     
     message = await ctx.send(embed=embed)
     await message.add_reaction('✅')
     
-    end_time = datetime.utcnow() + timedelta(hours=24)
+    end_time = datetime.now(timezone.utc) + timedelta(hours=24)
     
     tracking_data[message.id] = {
         'guild_id': ctx.guild.id,
@@ -99,23 +105,25 @@ async def track_reaction(ctx):
     print(f"[TRACKING] Will check in 24 hours at {end_time}")
 
 @bot.command(name='testtrack')
-async def test_track_reaction(ctx):
+@commands.has_permissions(administrator=True)
+async def test_track_activity(ctx):
+    """Start a short 20-second test activity check"""
     if not ctx.guild:
         await ctx.send("This command can only be used in a server!")
         return
     
     embed = discord.Embed(
-        title="🧪 TEST Reaction Check",
+        title="🧪 TEST Activity Check",
         description="Please react with ✅ to confirm you've seen this message!\n\n**You have 20 seconds to react (TEST MODE)**",
         color=discord.Color.orange(),
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     embed.set_footer(text=f"Started by {ctx.author.name} | TEST MODE")
     
     message = await ctx.send(embed=embed)
     await message.add_reaction('✅')
     
-    end_time = datetime.utcnow() + timedelta(seconds=20)
+    end_time = datetime.now(timezone.utc) + timedelta(seconds=20)
     
     tracking_data[message.id] = {
         'guild_id': ctx.guild.id,
@@ -132,7 +140,9 @@ async def test_track_reaction(ctx):
     print(f"[TEST TRACKING] Will check in 20 seconds at {end_time}")
 
 @bot.command(name='cancel')
+@commands.has_permissions(administrator=True)
 async def cancel_tracking(ctx, message_id: str):
+    """Cancel tracking for a specific message"""
     if not ctx.guild:
         await ctx.send("This command can only be used in a server!")
         return
@@ -156,7 +166,9 @@ async def cancel_tracking(ctx, message_id: str):
         await ctx.send("❌ No active tracking found for that message ID!")
 
 @bot.command(name='cancelall')
+@commands.has_permissions(administrator=True)
 async def cancel_all_tracking(ctx):
+    """Cancel all active tracking sessions"""
     if not ctx.guild:
         await ctx.send("This command can only be used in a server!")
         return
@@ -178,6 +190,7 @@ async def cancel_all_tracking(ctx):
 @bot.command(name='setchannel')
 @commands.has_permissions(administrator=True)
 async def set_report_channel(ctx):
+    """Set the report channel for non-reactor reports"""
     if not ctx.guild:
         await ctx.send("This command can only be used in a server!")
         return
@@ -193,6 +206,32 @@ async def set_report_channel(ctx):
     await ctx.send(embed=embed)
     print(f"[CONFIG] Report channel set to #{ctx.channel.name} in {ctx.guild.name}")
 
+# ===============================
+#  PUBLIC COMMAND
+# ===============================
+
+@bot.command(name='helpme')
+async def helpme(ctx):
+    """Show all available commands"""
+    embed = discord.Embed(
+        title="📋 Available Commands",
+        description="Here’s a list of all available bot commands:",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    embed.add_field(name="!track", value="Start a 24-hour activity check (Admin only).", inline=False)
+    embed.add_field(name="!testtrack", value="Start a 20-second test activity check (Admin only).", inline=False)
+    embed.add_field(name="!cancel [message_id]", value="Cancel tracking for a specific message (Admin only).", inline=False)
+    embed.add_field(name="!cancelall", value="Cancel all active tracking sessions (Admin only).", inline=False)
+    embed.add_field(name="!setchannel", value="Set this channel as the report destination (Admin only).", inline=False)
+    embed.add_field(name="!helpme", value="Show this help message (Available to everyone).", inline=False)
+    embed.set_footer(text=f"Requested by {ctx.author.display_name}")
+    await ctx.send(embed=embed)
+
+# ===============================
+#  ERROR HANDLING
+# ===============================
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
@@ -202,12 +241,16 @@ async def on_command_error(ctx, error):
     else:
         print(f"Error: {error}")
 
+# ===============================
+#  TRACKING LOOP
+# ===============================
+
 @tasks.loop(seconds=10)
 async def check_tracking():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     completed = []
     
-    for message_id, data in tracking_data.items():
+    for message_id, data in list(tracking_data.items()):
         end_time = datetime.fromisoformat(data['end_time'])
         
         if now >= end_time:
@@ -258,25 +301,21 @@ async def check_tracking():
                                 non_reactor_list = []
                                 for user_id in non_reactors:
                                     member = guild.get_member(user_id)
-                                    if member:
-                                        if kizuki_role and kizuki_role in member.roles:
-                                            non_reactor_list.append(f"• {member.mention} (ID: {user_id})")
-                                    else:
-                                        pass
+                                    if member and kizuki_role and kizuki_role in member.roles:
+                                        non_reactor_list.append(f"• {member.mention} (ID: {user_id})")
                                 
                                 embed = discord.Embed(
                                     title=f"{title_prefix}⚠️ Non-Reactors Report (Kizuki Role)",
                                     description=f"**{len(non_reactor_list)} Kizuki member(s)** did not react within {time_period}",
                                     color=discord.Color.orange() if is_test else discord.Color.red(),
-                                    timestamp=datetime.utcnow()
+                                    timestamp=datetime.now(timezone.utc)
                                 )
                                 
                                 if non_reactor_list:
                                     chunks = [non_reactor_list[i:i+20] for i in range(0, len(non_reactor_list), 20)]
                                     for i, chunk in enumerate(chunks):
-                                        field_name = "Non-Reactors" if i == 0 else f"Non-Reactors (cont.)"
                                         embed.add_field(
-                                            name=field_name,
+                                            name="Non-Reactors" if i == 0 else f"Non-Reactors (cont.)",
                                             value='\n'.join(chunk),
                                             inline=False
                                         )
@@ -303,7 +342,7 @@ async def check_tracking():
                         title="✅ Activity Check Concluded",
                         description="This activity check has concluded. Thank you for participating!",
                         color=discord.Color.green(),
-                        timestamp=datetime.utcnow()
+                        timestamp=datetime.now(timezone.utc)
                     )
                     concluded_embed.set_footer(text="Tracking completed")
                     
@@ -327,15 +366,17 @@ async def check_tracking():
 async def before_check_tracking():
     await bot.wait_until_ready()
 
+# ===============================
+#  MAIN ENTRY POINT
+# ===============================
+
 if __name__ == '__main__':
-    # Start Flask in background thread
     try:
         Thread(target=run_flask, daemon=True).start()
         print("Flask server started on port", os.environ.get('PORT', 10000))
     except Exception as e:
         print(f"Could not start Flask server: {e}")
     
-    # Start Discord bot
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         print("ERROR: DISCORD_TOKEN not found in environment variables!")
