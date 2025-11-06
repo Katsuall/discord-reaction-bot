@@ -308,10 +308,9 @@ async def before_check_tracking():
     await bot.wait_until_ready()
 
 if __name__ == '__main__':
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        print("ERROR: DISCORD_TOKEN not found in environment variables!")
-        print("Please add your Discord bot token to the Secrets.")
-    else:
-        bot.run(token)
-
+       token = os.getenv('DISCORD_TOKEN')
+       if not token:
+           print("ERROR: DISCORD_TOKEN not found in environment variables!")
+           print("Please add your Discord bot token to the Secrets.")
+       else:
+           bot.run(token)
